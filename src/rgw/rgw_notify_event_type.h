@@ -15,7 +15,11 @@ namespace rgw::notify {
     ObjectRemoved                        = 0xF0,
     ObjectRemovedDelete                  = 0x10,
     ObjectRemovedDeleteMarkerCreated     = 0x20,
-    UnknownEvent                         = 0x100
+    ObjectSynced                         = 0xF000,
+    ObjectSyncedCreate                   = 0x1000,
+    ObjectSyncedDelete                   = 0x2000,
+    ObjectSyncedDeletionMarkerCreated    = 0x4000,
+    UnknownEvent                         = 0x200
   };
 
   using EventTypeList = std::vector<EventType>;
