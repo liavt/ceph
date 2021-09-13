@@ -2340,50 +2340,47 @@ public:
           }
         }
 
-        if (need_more_info) {
-          ldout(cct, 20) << "Could not determine exact policy rule for obj=" << key << ", will read source object attributes" << dendl;
-          /*
-           * we need to fetch info about source object, so that we can determine
-           * the correct policy configuration. This can happen if there are multiple
-           * policy rules, and some depend on the object tagging */
-          yield call(new RGWStatRemoteObjCR(sync_env->async_rados,
-                                            sync_env->store,
-                                            sc->source_zone,
-                                            sync_pipe.info.source_bs.bucket,
-                                            key,
-                                            &src_mtime,
-                                            &src_size,
-                                            &src_etag,
-                                            &src_attrs,
-                                            &src_headers));
-          if (retcode < 0) {
-            return set_cr_error(retcode);
-          }
-
-          RGWObjTags obj_tags;
-
-          auto iter = src_attrs.find(RGW_ATTR_TAGS);
-          if (iter != src_attrs.end()) {
-            try {
-              auto it = iter->second.cbegin();
-              obj_tags.decode(it);
-            } catch (buffer::error &err) {
-              ldout(cct, 0) << "ERROR: " << __func__ << ": caught buffer::error couldn't decode TagSet " << dendl;
-            }
-          }
-
-          rgw_sync_pipe_params params;
-          if (!sync_pipe.info.handler.find_obj_params(key,
-                                                      obj_tags.get_tags(),
-                                                      &params)) {
-            return set_cr_error(-ERR_PRECONDITION_FAILED);
-          }
-
-          param_user = params.user;
-          param_mode = params.mode;
-
-          dest_params = params.dest;
+        /*
+         * we need to fetch info about source object, so that we can determine
+         * the correct policy configuration. This can happen if there are multiple
+         * policy rules, and some depend on the object tagging */
+        yield call(new RGWStatRemoteObjCR(sync_env->async_rados,
+                                          sync_env->store,
+                                          sc->source_zone,
+                                          sync_pipe.info.source_bs.bucket,
+                                          key,
+                                          &src_mtime,
+                                          &src_size,
+                                          &src_etag,
+                                          &src_attrs,
+                                          &src_headers));
+        if (retcode < 0) {
+          return set_cr_error(retcode);
         }
+
+        RGWObjTags obj_tags;
+
+        auto iter = src_attrs.find(RGW_ATTR_TAGS);
+        if (iter != src_attrs.end()) {
+          try {
+            auto it = iter->second.cbegin();
+            obj_tags.decode(it);
+          } catch (buffer::error &err) {
+            ldout(cct, 0) << "ERROR: " << __func__ << ": caught buffer::error couldn't decode TagSet " << dendl;
+          }
+        }
+
+        rgw_sync_pipe_params params;
+        if (!sync_pipe.info.handler.find_obj_params(key,
+                                                    obj_tags.get_tags(),
+                                                    &params)) {
+          return set_cr_error(-ERR_PRECONDITION_FAILED);
+        }
+
+        param_user = params.user;
+        param_mode = params.mode;
+
+        dest_params = params.dest;
 
         if (param_mode == rgw_sync_pipe_params::MODE_USER) {
           if (!param_user) {
@@ -2459,7 +2456,7 @@ public:
 				  
 		
         auto notify_res = static_cast<rgw::sal::RadosNotification*>(notify.get())->get_reservation();
-        int ret = rgw::notify:publish_reserve(dpp, rgw::notify::ObjectSyncedCreate, notify_res, nullptr /*object tags*/);
+        int ret = rgw::notify:publish_reserve(dpp, rgw::notify::ObjectSyncedCreate, notify_res, obj_tags);
         if (ret < 0) {
           ldpp_dout(dpp, 1) << "ERROR: reserving notification failed, with error: " << ret << dendl;
 		  // no need to return, the sync already happened
