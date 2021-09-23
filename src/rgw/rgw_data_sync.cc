@@ -2447,7 +2447,7 @@ public:
         std::unique_ptr<rgw::sal::Notification> notify 
 		         = sync_env->store->get_notification(dpp, &obj, nullptr, &rctx, rgw::notify:ObjectSyncedCreate,
 			      &bucket, "0",
-			      dest_bucket.get_tenant(),
+			      bucket.get_tenant(),
 			      "rgw sync", null_yield);
 				  
 		
@@ -2457,7 +2457,7 @@ public:
           ldpp_dout(dpp, 1) << "ERROR: reserving notification failed, with error: " << ret << dendl;
 		  // no need to return, the sync already happened
 		} else {
-          ret = rgw::notify::publish_commit(dest_object.get(), src_size, src_mtime, src_etag, 0/* version id */, rgw::notify::ObjectSyncedCreate, notify_res, dpp);
+          ret = rgw::notify::publish_commit(&obj, src_size, src_mtime, src_etag, 0/* version id */, rgw::notify::ObjectSyncedCreate, notify_res, dpp);
           if (ret < 0) {
             ldpp_dout(dpp, 1) << "ERROR: publishing notification failed, with error: " << ret << dendl;
 		  }
