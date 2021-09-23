@@ -2438,14 +2438,16 @@ public:
           }
           return set_cr_error(retcode);
         }
-		
-		// TODO Object is synced, notify
-		// where to get the object of this method?
-		// i have obj_key but this is a string not a rgw::sal::Object
+        
+        // notify that object has synced to this zone
+        
+        rgw::sal::RadosObject obj(sync_env->store, key);
+        rgw::sal::RadosBucket bucket(sync_env->store, sync_pipe.info.source_bs.bucket);
+        RGWObjectCtx rctx(sync_env->store);
         std::unique_ptr<rgw::sal::Notification> notify 
-		         = sync_env->store->get_notification(dpp, /* rgw::sal::Object object */, nullptr, /*RGWObjectCtx*/, rgw::notify:ObjectSyncedCreate,
-			      /* rgw::sal::Bucket */, "0",
-			      /* std::string user_tenant <- can come from bucket */,
+		         = sync_env->store->get_notification(dpp, &obj, nullptr, &rctx, rgw::notify:ObjectSyncedCreate,
+			      &bucket, "0",
+			      dest_bucket.get_tenant(),
 			      "rgw sync", null_yield);
 				  
 		
@@ -2455,7 +2457,7 @@ public:
           ldpp_dout(dpp, 1) << "ERROR: reserving notification failed, with error: " << ret << dendl;
 		  // no need to return, the sync already happened
 		} else {
-          ret = rgw::notify::publish_commit(/* obj */, src_size, src_mtime, src_etag, /* version id */, rgw::notify::ObjectSyncedCreate, notify_res, dpp);
+          ret = rgw::notify::publish_commit(dest_object.get(), src_size, src_mtime, src_etag, 0/* version id */, rgw::notify::ObjectSyncedCreate, notify_res, dpp);
           if (ret < 0) {
             ldpp_dout(dpp, 1) << "ERROR: publishing notification failed, with error: " << ret << dendl;
 		  }
