@@ -2281,8 +2281,6 @@ class RGWObjFetchCR : public RGWCoroutine {
   std::optional<rgw_obj_key> dest_key;
   std::optional<uint64_t> versioned_epoch;
   rgw_zone_set *zones_trace;
-  
-  RGWObjTags obj_tags;
 
   bool need_more_info{false};
   bool check_change{false};
@@ -2342,49 +2340,50 @@ public:
           }
         }
 
-        {
-            /*
-             * we need to fetch info about source object, so that we can determine
-             * the correct policy configuration. This can happen if there are multiple
-             * policy rules, and some depend on the object tagging */
-            yield call(new RGWStatRemoteObjCR(sync_env->async_rados,
-                                              sync_env->store,
-                                              sc->source_zone,
-                                              sync_pipe.info.source_bs.bucket,
-                                              key,
-                                              &src_mtime,
-                                              &src_size,
-                                              &src_etag,
-                                              &src_attrs,
-                                              &src_headers));
-            if (retcode < 0) {
-              return set_cr_error(retcode);
+        if (need_more_info) {
+          ldout(cct, 20) << "Could not determine exact policy rule for obj=" << key << ", will read source object attributes" << dendl;
+          /*
+           * we need to fetch info about source object, so that we can determine
+           * the correct policy configuration. This can happen if there are multiple
+           * policy rules, and some depend on the object tagging */
+          yield call(new RGWStatRemoteObjCR(sync_env->async_rados,
+                                            sync_env->store,
+                                            sc->source_zone,
+                                            sync_pipe.info.source_bs.bucket,
+                                            key,
+                                            &src_mtime,
+                                            &src_size,
+                                            &src_etag,
+                                            &src_attrs,
+                                            &src_headers));
+          if (retcode < 0) {
+            return set_cr_error(retcode);
+          }
+
+          RGWObjTags obj_tags;
+
+          auto iter = src_attrs.find(RGW_ATTR_TAGS);
+          if (iter != src_attrs.end()) {
+            try {
+              auto it = iter->second.cbegin();
+              obj_tags.decode(it);
+            } catch (buffer::error &err) {
+              ldout(cct, 0) << "ERROR: " << __func__ << ": caught buffer::error couldn't decode TagSet " << dendl;
             }
+          }
 
-            
+          rgw_sync_pipe_params params;
+          if (!sync_pipe.info.handler.find_obj_params(key,
+                                                      obj_tags.get_tags(),
+                                                      &params)) {
+            return set_cr_error(-ERR_PRECONDITION_FAILED);
+          }
 
-            auto iter = src_attrs.find(RGW_ATTR_TAGS);
-            if (iter != src_attrs.end()) {
-              try {
-                auto it = iter->second.cbegin();
-                obj_tags.decode(it);
-              } catch (buffer::error &err) {
-                ldout(cct, 0) << "ERROR: " << __func__ << ": caught buffer::error couldn't decode TagSet " << dendl;
-              }
-            }
+          param_user = params.user;
+          param_mode = params.mode;
 
-            rgw_sync_pipe_params params;
-            if (!sync_pipe.info.handler.find_obj_params(key,
-                                                        obj_tags.get_tags(),
-                                                        &params)) {
-              return set_cr_error(-ERR_PRECONDITION_FAILED);
-            }
-            param_user = params.user;
-            param_mode = params.mode;
-
-            dest_params = params.dest;        
+          dest_params = params.dest;
         }
-
 
         if (param_mode == rgw_sync_pipe_params::MODE_USER) {
           if (!param_user) {
@@ -2447,33 +2446,6 @@ public:
             continue;
           }
           return set_cr_error(retcode);
-        }
-        
-        // notify that object has synced to this zone
-        
-        rgw::sal::RadosObject obj(sync_env->store, key);
-        rgw::sal::RadosBucket bucket(sync_env->store, sync_pipe.info.source_bs.bucket);
-        RGWObjectCtx rctx(sync_env->store);
-        std::string user_id = "0";
-        std::string req_id = "rgw sync";
-        std::string tenant(bucket.get_tenant());
-        std::unique_ptr<rgw::sal::Notification> notify 
-                 = sync_env->store->get_notification(dpp, &obj, nullptr, &rctx, rgw::notify::ObjectSyncedCreate,
-                  &bucket, user_id,
-                  tenant,
-                  user_id, null_yield);
-                  
-        
-        auto notify_res = static_cast<rgw::sal::RadosNotification*>(notify.get())->get_reservation();
-        int ret = rgw::notify::publish_reserve(dpp, rgw::notify::ObjectSyncedCreate, notify_res, &obj_tags);
-        if (ret < 0) {
-          ldpp_dout(dpp, 1) << "ERROR: reserving notification failed, with error: " << ret << dendl;
-          // no need to return, the sync already happened
-        } else {
-          ret = rgw::notify::publish_commit(&obj, src_size, src_mtime, src_etag, 0/* version id */, rgw::notify::ObjectSyncedCreate, notify_res, dpp);
-          if (ret < 0) {
-            ldpp_dout(dpp, 1) << "ERROR: publishing notification failed, with error: " << ret << dendl;
-          }
         }
 
         return set_cr_done();
@@ -5185,4 +5157,3 @@ void rgw_bucket_shard_sync_info::dump(Formatter *f) const
   encode_json("full_marker", full_marker, f);
   encode_json("inc_marker", inc_marker, f);
 }
-

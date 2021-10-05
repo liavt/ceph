@@ -73,9 +73,9 @@ RGWAsyncRadosProcessor::RGWAsyncRadosProcessor(CephContext *_cct, int num_thread
   : cct(_cct), m_tp(cct, "RGWAsyncRadosProcessor::m_tp", "rados_async", num_threads),
     req_throttle(_cct, "rgw_async_rados_ops", num_threads * 2),
     req_wq(this,
-	   ceph::make_timespan(g_conf()->rgw_op_thread_timeout),
-	   ceph::make_timespan(g_conf()->rgw_op_thread_suicide_timeout),
-	   &m_tp) {
+       ceph::make_timespan(g_conf()->rgw_op_thread_timeout),
+       ceph::make_timespan(g_conf()->rgw_op_thread_suicide_timeout),
+       &m_tp) {
 }
 
 void RGWAsyncRadosProcessor::start() {
@@ -109,7 +109,7 @@ int RGWAsyncGetSystemObj::_send_request(const DoutPrefixProvider *dpp)
   return sysobj.rop()
                .set_objv_tracker(&objv_tracker)
                .set_attrs(pattrs)
-	       .set_raw_attrs(raw_attrs)
+           .set_raw_attrs(raw_attrs)
                .read(dpp, &bl, null_yield);
 }
 
@@ -127,7 +127,7 @@ RGWAsyncGetSystemObj::RGWAsyncGetSystemObj(const DoutPrefixProvider *_dpp, RGWCo
 int RGWSimpleRadosReadAttrsCR::send_request(const DoutPrefixProvider *dpp)
 {
   req = new RGWAsyncGetSystemObj(dpp, this, stack->create_completion_notifier(),
-			         svc, objv_tracker, obj, true, raw_attrs);
+                     svc, objv_tracker, obj, true, raw_attrs);
   async_rados->queue(req);
   return 0;
 }
@@ -652,6 +652,8 @@ int RGWAsyncFetchRemoteObj::_send_request(const DoutPrefixProvider *dpp)
   rgw::sal::RadosObject src_obj(store, key, &bucket);
   rgw::sal::RadosBucket dest_bucket(store, dest_bucket_info);
   rgw::sal::RadosObject dest_obj(store, dest_key.value_or(key), &dest_bucket);
+  
+  ceph::real_time src_mtime;
 
   std::optional<uint64_t> bytes_transferred;
   int r = store->getRados()->fetch_remote_obj(obj_ctx,
@@ -662,8 +664,8 @@ int RGWAsyncFetchRemoteObj::_send_request(const DoutPrefixProvider *dpp)
                        &src_obj,
                        &dest_bucket, /* dest */
                        nullptr, /* source */
-		       dest_placement_rule,
-                       NULL, /* real_time* src_mtime, */
+               dest_placement_rule,
+                       &src_mtime, /* real_time* src_mtime, */
                        NULL, /* real_time* mtime, */
                        NULL, /* const real_time* mod_ptr, */
                        NULL, /* const real_time* unmod_ptr, */
@@ -690,12 +692,54 @@ int RGWAsyncFetchRemoteObj::_send_request(const DoutPrefixProvider *dpp)
     if (counters) {
       counters->inc(sync_counters::l_fetch_err, 1);
     }
-  } else if (counters) {
-    if (bytes_transferred) {
-      counters->inc(sync_counters::l_fetch, *bytes_transferred);
-    } else {
-      counters->inc(sync_counters::l_fetch_not_modified);
-    }
+  } else {
+      // r >= 0
+      if (bytes_transferred) {
+        // send notification that object was succesfully synced
+        std::string user_id = "0";
+        std::string req_id = "rgw sync";
+        
+        // NOTE: we create a mutable copy of bucket.get_tenant as the get_notification function expects a std::string&, not const
+        std::string tenant(bucket.get_tenant());
+        
+        RGWObjTags obj_tags;
+        auto iter = attrs.find(RGW_ATTR_TAGS);
+        if (iter != attrs.end()) {
+          try {
+            auto it = iter->second.cbegin();
+            obj_tags.decode(it);
+          } catch (buffer::error &err) {
+            ldpp_dout(dpp, 1) << "ERROR: " << __func__ << ": caught buffer::error couldn't decode TagSet " << dendl;
+          }
+        }
+        
+        std::unique_ptr<rgw::sal::Notification> notify 
+                 = store->get_notification(dpp, &dest_obj, &src_obj, &obj_ctx, rgw::notify::ObjectSyncedCreate,
+                  &bucket, user_id,
+                  tenant,
+                  user_id, null_yield);
+                  
+        
+        auto notify_res = static_cast<rgw::sal::RadosNotification*>(notify.get())->get_reservation();
+        int ret = rgw::notify::publish_reserve(dpp, rgw::notify::ObjectSyncedCreate, notify_res, &obj_tags);
+        if (ret < 0) {
+          ldpp_dout(dpp, 1) << "ERROR: reserving notification failed, with error: " << ret << dendl;
+          // no need to return, the sync already happened
+        } else {
+          ret = rgw::notify::publish_commit(&src_obj, src_obj.get_obj_size(), src_mtime, nullptr /* etag */, 0/* version id */, rgw::notify::ObjectSyncedCreate, notify_res, dpp);
+          if (ret < 0) {
+            ldpp_dout(dpp, 1) << "ERROR: publishing notification failed, with error: " << ret << dendl;
+          }
+        }
+      }
+      
+      if (counters) {
+        if (bytes_transferred) {
+          counters->inc(sync_counters::l_fetch, *bytes_transferred);
+        } else {
+          counters->inc(sync_counters::l_fetch_not_modified);
+        }
+      }
   }
   return r;
 }
