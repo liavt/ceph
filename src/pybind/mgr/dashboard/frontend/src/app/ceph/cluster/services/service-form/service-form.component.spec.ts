@@ -4,7 +4,7 @@ import { ReactiveFormsModule } from '@angular/forms';
 import { By } from '@angular/platform-browser';
 import { RouterTestingModule } from '@angular/router/testing';
 
-import { NgbTypeaheadModule } from '@ng-bootstrap/ng-bootstrap';
+import { NgbActiveModal, NgbTypeaheadModule } from '@ng-bootstrap/ng-bootstrap';
 import _ from 'lodash';
 import { ToastrModule } from 'ngx-toastr';
 
@@ -23,6 +23,7 @@ describe('ServiceFormComponent', () => {
 
   configureTestBed({
     declarations: [ServiceFormComponent],
+    providers: [NgbActiveModal],
     imports: [
       HttpClientTestingModule,
       NgbTypeaheadModule,
@@ -36,6 +37,7 @@ describe('ServiceFormComponent', () => {
   beforeEach(() => {
     fixture = TestBed.createComponent(ServiceFormComponent);
     component = fixture.componentInstance;
+    component.ngOnInit();
     form = component.serviceForm;
     formHelper = new FormHelper(form);
     fixture.detectChanges();
@@ -142,28 +144,14 @@ describe('ServiceFormComponent', () => {
     describe('should test service nfs', () => {
       beforeEach(() => {
         formHelper.setValue('service_type', 'nfs');
-        formHelper.setValue('pool', 'foo');
       });
 
-      it('should submit nfs with namespace', () => {
-        formHelper.setValue('namespace', 'bar');
+      it('should submit nfs', () => {
         component.onSubmit();
         expect(cephServiceService.create).toHaveBeenCalledWith({
           service_type: 'nfs',
           placement: {},
-          unmanaged: false,
-          pool: 'foo',
-          namespace: 'bar'
-        });
-      });
-
-      it('should submit nfs w/o namespace', () => {
-        component.onSubmit();
-        expect(cephServiceService.create).toHaveBeenCalledWith({
-          service_type: 'nfs',
-          placement: {},
-          unmanaged: false,
-          pool: 'foo'
+          unmanaged: false
         });
       });
     });
@@ -239,13 +227,13 @@ describe('ServiceFormComponent', () => {
 
       it('should submit invalid rgw port (1)', () => {
         formHelper.setValue('rgw_frontend_port', 0);
-        component.onSubmit();
+        fixture.detectChanges();
         formHelper.expectError('rgw_frontend_port', 'min');
       });
 
       it('should submit invalid rgw port (2)', () => {
         formHelper.setValue('rgw_frontend_port', 65536);
-        component.onSubmit();
+        fixture.detectChanges();
         formHelper.expectError('rgw_frontend_port', 'max');
       });
 
@@ -361,13 +349,13 @@ x4Ea7kGVgx9kWh5XjWz9wjZvY49UKIT5ppIAWPMbLl3UpfckiuNhTA==
 
       it('should submit invalid iscsi port (1)', () => {
         formHelper.setValue('api_port', 0);
-        component.onSubmit();
+        fixture.detectChanges();
         formHelper.expectError('api_port', 'min');
       });
 
       it('should submit invalid iscsi port (2)', () => {
         formHelper.setValue('api_port', 65536);
-        component.onSubmit();
+        fixture.detectChanges();
         formHelper.expectError('api_port', 'max');
       });
 
@@ -375,6 +363,10 @@ x4Ea7kGVgx9kWh5XjWz9wjZvY49UKIT5ppIAWPMbLl3UpfckiuNhTA==
         formHelper.setValue('api_port', 'abc');
         component.onSubmit();
         formHelper.expectError('api_port', 'pattern');
+      });
+
+      it('should throw error when there is no pool', () => {
+        formHelper.expectErrorChange('pool', '', 'required');
       });
     });
 
@@ -410,14 +402,14 @@ x4Ea7kGVgx9kWh5XjWz9wjZvY49UKIT5ppIAWPMbLl3UpfckiuNhTA==
         // min value
         formHelper.setValue('frontend_port', 1);
         formHelper.setValue('monitor_port', 1);
-        component.onSubmit();
+        fixture.detectChanges();
         formHelper.expectValid('frontend_port');
         formHelper.expectValid('monitor_port');
 
         // max value
         formHelper.setValue('frontend_port', 65535);
         formHelper.setValue('monitor_port', 65535);
-        component.onSubmit();
+        fixture.detectChanges();
         formHelper.expectValid('frontend_port');
         formHelper.expectValid('monitor_port');
       });
@@ -426,14 +418,14 @@ x4Ea7kGVgx9kWh5XjWz9wjZvY49UKIT5ppIAWPMbLl3UpfckiuNhTA==
         // min
         formHelper.setValue('frontend_port', 0);
         formHelper.setValue('monitor_port', 0);
-        component.onSubmit();
+        fixture.detectChanges();
         formHelper.expectError('frontend_port', 'min');
         formHelper.expectError('monitor_port', 'min');
 
         // max
         formHelper.setValue('frontend_port', 65536);
         formHelper.setValue('monitor_port', 65536);
-        component.onSubmit();
+        fixture.detectChanges();
         formHelper.expectError('frontend_port', 'max');
         formHelper.expectError('monitor_port', 'max');
 
@@ -443,6 +435,23 @@ x4Ea7kGVgx9kWh5XjWz9wjZvY49UKIT5ppIAWPMbLl3UpfckiuNhTA==
         component.onSubmit();
         formHelper.expectError('frontend_port', 'pattern');
         formHelper.expectError('monitor_port', 'pattern');
+      });
+    });
+
+    describe('check edit fields', () => {
+      beforeEach(() => {
+        component.editing = true;
+      });
+
+      it('should check whether edit field is correctly loaded', () => {
+        const cephServiceSpy = spyOn(cephServiceService, 'list').and.callThrough();
+        component.ngOnInit();
+        expect(cephServiceSpy).toBeCalledTimes(2);
+        expect(component.action).toBe('Edit');
+        const serviceType = fixture.debugElement.query(By.css('#service_type')).nativeElement;
+        const serviceId = fixture.debugElement.query(By.css('#service_id')).nativeElement;
+        expect(serviceType.disabled).toBeTruthy();
+        expect(serviceId.disabled).toBeTruthy();
       });
     });
   });

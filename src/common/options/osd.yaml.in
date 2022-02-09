@@ -739,6 +739,15 @@ options:
   default: 32
   flags:
   - startup
+- name: osd_aggregated_slow_ops_logging
+  type: bool
+  level: advanced
+  desc: Allow OSD daemon to send an aggregated slow ops to the cluster log
+  fmt_desc: If set to ``true``, the OSD daemon will send slow ops information in 
+    an aggregated format to the cluster log else sends every slow op to the
+    cluster log.
+  default: true
+  with_legacy: true
 - name: osd_op_num_threads_per_shard
   type: int
   level: advanced
@@ -1061,6 +1070,19 @@ options:
   - osd_mclock_max_capacity_iops_ssd
   flags:
   - startup
+- name: osd_mclock_skip_benchmark
+  type: bool
+  level: dev
+  desc: Skip the OSD benchmark on OSD initialization/boot-up
+  long_desc: This option specifies whether the OSD benchmark must be skipped during
+    the OSD boot-up sequence. Only considered for osd_op_queue = mclock_scheduler.
+  fmt_desc: Skip the OSD benchmark on OSD initialization/boot-up
+  default: false
+  see_also:
+  - osd_mclock_max_capacity_iops_hdd
+  - osd_mclock_max_capacity_iops_ssd
+  flags:
+  - runtime
 - name: osd_mclock_profile
   type: str
   level: advanced

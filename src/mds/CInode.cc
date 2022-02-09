@@ -63,13 +63,19 @@ void CInodeCommitOperation::update(ObjectOperation &op, inode_backtrace_t &bt) {
   encode(bt, parent_bl);
   op.setxattr("parent", parent_bl);
 
-  // for the old pool there is no need to update the layout
-  if (!update_layout)
+  // for the old pool there is no need to update the layout and symlink
+  if (!update_layout_symlink)
     return;
 
   bufferlist layout_bl;
   encode(_layout, layout_bl, _features);
   op.setxattr("layout", layout_bl);
+
+  if (!_symlink.empty()) {
+    bufferlist symlink_bl;
+    encode(_symlink, symlink_bl);
+    op.setxattr("symlink", symlink_bl);
+  }
 }
 
 class CInodeIOContext : public MDSIOContextBase
@@ -1350,8 +1356,13 @@ void CInode::_store_backtrace(std::vector<CInodeCommitOperation> &ops_vec,
   const int64_t pool = get_backtrace_pool();
   build_backtrace(pool, bt);
 
+  std::string_view slink = "";
+  if (is_symlink() && mdcache->get_symlink_recovery()) {
+    slink = symlink;
+  }
+
   ops_vec.emplace_back(op_prio, pool, get_inode()->layout,
-                       mdcache->mds->mdsmap->get_up_features());
+                       mdcache->mds->mdsmap->get_up_features(), slink);
 
   if (!state_test(STATE_DIRTYPOOL) || get_inode()->old_pools.empty()) {
     dout(20) << __func__ << ": no dirtypool or no old pools" << dendl;
@@ -3758,8 +3769,8 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
 	     << (state_test(CInode::STATE_EXPORTINGCAPS)?", exporting caps":"")
 	     << dendl;
 
-  
-  // "fake" a version that is old (stable) version, +1 if projected.
+
+  // "fake" a version that is odd (stable) version, +1 if projected.
   version_t version = (oi->version * 2) + is_projected();
 
   Capability *cap = get_client_cap(client);
@@ -3771,9 +3782,9 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
 
   bool plocal = versionlock.get_last_wrlock_client() == client;
   bool ppolicy = policylock.is_xlocked_by_client(client) || get_loner()==client;
-  
+
   const mempool_inode *any_i = (pfile|pauth|plink|pxattr|plocal) ? pi : oi;
-  
+
   dout(20) << " pfile " << pfile << " pauth " << pauth
 	   << " plink " << plink << " pxattr " << pxattr
 	   << " plocal " << plocal
@@ -4133,6 +4144,7 @@ void CInode::encode_cap_message(const ref_t<MClientCaps> &m, Capability *cap)
   m->mtime = i->mtime;
   m->atime = i->atime;
   m->ctime = i->ctime;
+  m->btime = i->btime;
   m->change_attr = i->change_attr;
   m->time_warp_seq = i->time_warp_seq;
   m->nfiles = i->dirstat.nfiles;

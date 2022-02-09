@@ -196,13 +196,14 @@ class KVPool {
 
   static KVPool create_range(
       const std::pair<index_t, index_t>& range_i,
-      const std::vector<size_t>& value_sizes) {
+      const std::vector<size_t>& value_sizes,
+      const uint64_t block_size) {
     kv_vector_t kvs;
     std::random_device rd;
     for (index_t i = range_i.first; i < range_i.second; ++i) {
       auto value_size = value_sizes[rd() % value_sizes.size()];
       kvs.emplace_back(
-          kv_t{make_oid(i), ValueItem::create(value_size, i)}
+          kv_t{make_oid(i), ValueItem::create(value_size, i, block_size)}
       );
     }
     return KVPool(std::move(kvs));
@@ -419,6 +420,8 @@ class TreeBuilder {
     auto ref_kv_iter = seastar::make_lw_shared<iterator_t>();
     auto cursors = seastar::make_lw_shared<std::map<ghobject_t, BtreeCursor>>();
     return eagain_iertr::now().si_then([&t, this, cursors, ref_kv_iter] {
+      (void)this; // silence clang warning for !TRACK
+      (void)t; // silence clang warning for !TRACK
       if constexpr (TRACK) {
         logger().info("Tracking cursors before erase ...");
         *ref_kv_iter = kvs.begin();

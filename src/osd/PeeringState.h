@@ -264,6 +264,13 @@ public:
 
     /// Notify that info/history changed (generally to update scrub registration)
     virtual void on_info_history_change() = 0;
+
+    /// Notify PG that Primary/Replica status has changed (to update scrub registration)
+    virtual void on_primary_status_change(bool was_primary, bool now_primary) = 0;
+
+    /// Need to reschedule next scrub. Assuming no change in role
+    virtual void reschedule_scrub() = 0;
+
     /// Notify that a scrub has been requested
     virtual void scrub_requested(scrub_level_t scrub_level, scrub_type_t scrub_type) = 0;
 
@@ -1802,6 +1809,9 @@ public:
     std::function<bool(pg_history_t &, pg_stat_t &)> f,
     ObjectStore::Transaction *t = nullptr);
 
+  void update_stats_wo_resched(
+    std::function<void(pg_history_t &, pg_stat_t &)> f);
+
   /**
    * adjust_purged_snaps
    *
@@ -2086,6 +2096,7 @@ public:
   void clear_prior_readable_until_ub() {
     prior_readable_until_ub = ceph::signedspan::zero();
     prior_readable_down_osds.clear();
+    info.history.prior_readable_until_ub = ceph::signedspan::zero();
   }
 
   void renew_lease(ceph::signedspan now) {

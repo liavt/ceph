@@ -437,17 +437,15 @@ public:
   // file ops
   int mknod(const char *path, mode_t mode, const UserPerm& perms, dev_t rdev=0);
 
-  int create_and_open(std::optional<int> dirfd, const char *relpath, int flags, const UserPerm& perms,
-                      mode_t mode, int stripe_unit, int stripe_count, int object_size, const char *data_pool,
-                      std::string alternate_name);
+  int create_and_open(int dirfd, const char *relpath, int flags, const UserPerm& perms,
+                      mode_t mode, int stripe_unit, int stripe_count, int object_size,
+                      const char *data_pool, std::string alternate_name);
   int open(const char *path, int flags, const UserPerm& perms, mode_t mode=0, std::string alternate_name="") {
     return open(path, flags, perms, mode, 0, 0, 0, NULL, alternate_name);
   }
   int open(const char *path, int flags, const UserPerm& perms,
 	   mode_t mode, int stripe_unit, int stripe_count, int object_size,
 	   const char *data_pool, std::string alternate_name="");
-  int _openat(int dirfd, const char *relpath, int flags, const UserPerm& perms,
-              mode_t mode=0, std::string alternate_name="");
   int openat(int dirfd, const char *relpath, int flags, const UserPerm& perms,
              mode_t mode, int stripe_unit, int stripe_count,
              int object_size, const char *data_pool, std::string alternate_name);
@@ -811,6 +809,16 @@ public:
   void tick();
   void start_tick_thread();
 
+  void update_read_io_size(size_t size) {
+    total_read_ops++;
+    total_read_size += size;
+  }
+
+  void update_write_io_size(size_t size) {
+    total_write_ops++;
+    total_write_size += size;
+  }
+
   void inc_dentry_nr() {
     ++dentry_nr;
   }
@@ -867,8 +875,6 @@ public:
     return std::make_pair(opened_inodes, inode_map.size());
   }
 
-  xlist<Inode*> &get_dirty_list() { return dirty_list; }
-
   /* timer_lock for 'timer' */
   ceph::mutex timer_lock = ceph::make_mutex("Client::timer_lock");
   SafeTimer timer;
@@ -901,9 +907,9 @@ protected:
   void get_session_metadata(std::map<std::string, std::string> *meta) const;
   bool have_open_session(mds_rank_t mds);
   void got_mds_push(MetaSession *s);
-  MetaSession *_get_mds_session(mds_rank_t mds, Connection *con);  ///< return session for mds *and* con; null otherwise
-  MetaSession *_get_or_open_mds_session(mds_rank_t mds);
-  MetaSession *_open_mds_session(mds_rank_t mds);
+  MetaSessionRef _get_mds_session(mds_rank_t mds, Connection *con);  ///< return session for mds *and* con; null otherwise
+  MetaSessionRef _get_or_open_mds_session(mds_rank_t mds);
+  MetaSessionRef _open_mds_session(mds_rank_t mds);
   void _close_mds_session(MetaSession *s);
   void _closed_mds_session(MetaSession *s, int err=0, bool rejected=false);
   bool _any_stale_sessions() const;
@@ -1476,7 +1482,7 @@ private:
   epoch_t cap_epoch_barrier = 0;
 
   // mds sessions
-  map<mds_rank_t, MetaSession> mds_sessions;  // mds -> push seq
+  map<mds_rank_t, MetaSessionRef> mds_sessions;  // mds -> push seq
   std::set<mds_rank_t> mds_ranks_closing;  // mds ranks currently tearing down sessions
   std::list<ceph::condition_variable*> waiting_for_mdsmap;
 
@@ -1522,8 +1528,7 @@ private:
   // cap flushing
   ceph_tid_t last_flush_tid = 1;
 
-  // dirty_list keeps all the dirty inodes before flushing.
-  xlist<Inode*> delayed_list, dirty_list;
+  xlist<Inode*> delayed_list;
   int num_flushing_caps = 0;
   ceph::unordered_map<inodeno_t,SnapRealm*> snap_realms;
   std::map<std::string, std::string> metadata;
@@ -1557,6 +1562,12 @@ private:
   uint64_t opened_files = 0;
   uint64_t pinned_icaps = 0;
   uint64_t opened_inodes = 0;
+
+  uint64_t total_read_ops = 0;
+  uint64_t total_read_size = 0;
+
+  uint64_t total_write_ops = 0;
+  uint64_t total_write_size = 0;
 
   ceph::spinlock delay_i_lock;
   std::map<Inode*,int> delay_i_release;

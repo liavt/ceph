@@ -480,6 +480,10 @@ public:
     std::mutex lock;
     std::condition_variable cond;
     WorkPool* workpool{nullptr};
+    /* save the target bucket names created as part of object transition
+     * to cloud. This list is maintained for the duration of each RGWLC::process()
+     * post which it is discarded. */
+    std::set<std::string> cloud_targets;
 
   public:
 
@@ -493,6 +497,7 @@ public:
     void stop();
     bool should_work(utime_t& now);
     int schedule_next_start_time(utime_t& start, utime_t& now);
+    std::set<std::string>& get_cloud_targets() { return cloud_targets; }
     ~LCWorker();
 
     friend class RGWRados;
@@ -510,8 +515,12 @@ public:
   void initialize(CephContext *_cct, rgw::sal::Store* _store);
   void finalize();
 
-  int process(LCWorker* worker, bool once);
-  int process(int index, int max_secs, LCWorker* worker, bool once);
+  int process(LCWorker* worker,
+	      const std::unique_ptr<rgw::sal::Bucket>& optional_bucket,
+	      bool once);
+  int process(int index, int max_lock_secs, LCWorker* worker, bool once);
+  int process_bucket(int index, int max_lock_secs, LCWorker* worker,
+		     const std::string& bucket_entry_marker, bool once);
   bool if_already_run_today(time_t start_date);
   bool expired_session(time_t started);
   time_t thread_stop_at();

@@ -17,9 +17,13 @@
 
 namespace crimson::os::seastore {
 
+class ool_record_t;
 class Transaction;
 class CachedExtent;
 using CachedExtentRef = boost::intrusive_ptr<CachedExtent>;
+class SegmentedAllocator;
+class TransactionManager;
+class ExtentPlacementManager;
 
 // #define DEBUG_CACHED_EXTENT_REF
 #ifdef DEBUG_CACHED_EXTENT_REF
@@ -79,6 +83,7 @@ class CachedExtent : public boost::intrusive_ref_counter<
   enum class extent_state_t : uint8_t {
     INITIAL_WRITE_PENDING, // In Transaction::write_set and fresh_block_list
     MUTATION_PENDING,      // In Transaction::write_set and mutated_block_list
+    CLEAN_PENDING,         // CLEAN, but not yet read out
     CLEAN,                 // In Cache::extent_index, Transaction::read_set
                            //  during write, contents match disk, version == 0
     DIRTY,                 // Same as CLEAN, but contents do not match disk,
@@ -166,10 +171,14 @@ public:
 	<< ", version=" << version
 	<< ", dirty_from_or_retired_at=" << dirty_from_or_retired_at
 	<< ", paddr=" << get_paddr()
+	<< ", length=" << get_length()
 	<< ", state=" << state
 	<< ", last_committed_crc=" << last_committed_crc
 	<< ", refcount=" << use_count();
-    print_detail(out);
+    if (state != extent_state_t::INVALID &&
+        state != extent_state_t::CLEAN_PENDING) {
+      print_detail(out);
+    }
     return out << ")";
   }
 
@@ -248,7 +257,8 @@ public:
   bool is_clean() const {
     ceph_assert(is_valid());
     return state == extent_state_t::INITIAL_WRITE_PENDING ||
-      state == extent_state_t::CLEAN;
+           state == extent_state_t::CLEAN ||
+           state == extent_state_t::CLEAN_PENDING;
   }
 
   /// Returns true if extent is dirty (has deltas on disk)
@@ -265,6 +275,11 @@ public:
   /// Returns true if extent or prior_instance has been invalidated
   bool has_been_invalidated() const {
     return !is_valid() || (prior_instance && !prior_instance->is_valid());
+  }
+
+  /// Returns true if extent is a plcaeholder
+  bool is_placeholder() const {
+    return get_type() == extent_types_t::RETIRED_PLACEHOLDER;
   }
 
   /// Return journal location of oldest relevant delta, only valid while DIRTY
@@ -320,6 +335,15 @@ public:
 
   virtual ~CachedExtent();
 
+  /// type of the backend device that will hold this extent
+  device_type_t backend_type = device_type_t::NONE;
+
+  /// hint for allocators
+  placement_hint_t hint = placement_hint_t::NUM_HINTS;
+
+  bool is_inline() const {
+    return poffset.is_relative();
+  }
 private:
   template <typename T>
   friend class read_set_item_t;
@@ -340,6 +364,10 @@ private:
   using index = boost::intrusive::set<CachedExtent, index_member_options>;
   friend class ExtentIndex;
   friend class Transaction;
+
+  bool is_linked() {
+    return extent_index_hook.is_linked();
+  }
 
   /// hook for intrusive ref list (mainly dirty or lru list)
   boost::intrusive::list_member_hook<> primary_ref_list_hook;
@@ -456,6 +484,10 @@ protected:
     }
   }
 
+  friend class crimson::os::seastore::ool_record_t;
+  friend class crimson::os::seastore::SegmentedAllocator;
+  friend class crimson::os::seastore::TransactionManager;
+  friend class crimson::os::seastore::ExtentPlacementManager;
 };
 
 std::ostream &operator<<(std::ostream &, CachedExtent::extent_state_t);
@@ -514,7 +546,7 @@ class ExtentIndex {
   friend class Cache;
   CachedExtent::index extent_index;
 public:
-  auto get_overlap(paddr_t addr, segment_off_t len) {
+  auto get_overlap(paddr_t addr, seastore_off_t len) {
     auto bottom = extent_index.upper_bound(addr, paddr_cmp());
     if (bottom != extent_index.begin())
       --bottom;
@@ -530,12 +562,18 @@ public:
   }
 
   void clear() {
-    extent_index.clear();
+    struct cached_extent_disposer {
+      void operator() (CachedExtent* extent) {
+	extent->parent_index = nullptr;
+      }
+    };
+    extent_index.clear_and_dispose(cached_extent_disposer());
     bytes = 0;
   }
 
   void insert(CachedExtent &extent) {
     // sanity check
+    ceph_assert(!extent.parent_index);
     auto [a, b] = get_overlap(
       extent.get_paddr(),
       extent.get_length());
@@ -550,12 +588,13 @@ public:
 
   void erase(CachedExtent &extent) {
     assert(extent.parent_index);
-    auto erased = extent_index.erase(extent);
+    assert(extent.is_linked());
+    [[maybe_unused]] auto erased = extent_index.erase(
+      extent_index.s_iterator_to(extent));
     extent.parent_index = nullptr;
 
-    if (erased) {
-      bytes -= extent.get_length();
-    }
+    assert(erased);
+    bytes -= extent.get_length();
   }
 
   void replace(CachedExtent &to, CachedExtent &from) {

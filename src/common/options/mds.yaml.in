@@ -19,6 +19,12 @@ options:
   - mds
   flags:
   - runtime
+- name: mds_standby_replay_damaged
+  type: bool
+  level: dev
+  default: false
+  flags:
+  - runtime
 - name: mds_numa_node
   type: int
   level: advanced
@@ -828,7 +834,7 @@ options:
   type: bool
   level: advanced
   desc: prefetch dirfrags recorded in open file table on startup
-  default: true
+  default: false
   services:
   - mds
   flags:
@@ -1388,6 +1394,39 @@ options:
   long_desc: interval in seconds after which active MDSs send client metrics data
     to rank 0.
   default: 2
+  services:
+  - mds
+  flags:
+  - runtime
+- name: mds_dir_max_entries
+  type: uint
+  level: advanced
+  desc: maximum number of entries per directory before new creat/links fail
+  long_desc: The maximum number of entries before any new entries
+    are rejected with ENOSPC.
+  default: 0
+  services:
+  - mds
+  flags:
+  - runtime
+- name: mds_sleep_rank_change
+  type: float
+  level: dev
+  default: 0.0
+  flags:
+  - runtime
+- name: mds_connect_bootstrapping
+  type: bool
+  level: dev
+  default: false
+  flags:
+  - runtime
+- name: mds_symlink_recovery
+  type: bool
+  level: advanced
+  desc: Stores symlink target on the first data object of symlink file.
+    Allows recover of symlink using recovery tools.
+  default: true
   services:
   - mds
   flags:

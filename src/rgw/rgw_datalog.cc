@@ -767,8 +767,8 @@ int RGWDataChangesLog::list_entries(const DoutPrefixProvider *dpp, int max_entri
     if (ret < 0) {
       return ret;
     }
-    if (truncated) {
-      *ptruncated = true;
+    if (!truncated) {
+      *ptruncated = false;
       return 0;
     }
   }
@@ -990,6 +990,10 @@ void RGWDataChangesLog::renew_stop()
 
 void RGWDataChangesLog::mark_modified(int shard_id, const rgw_bucket_shard& bs)
 {
+  if (!cct->_conf->rgw_data_notify_interval_msec) {
+    return;
+  }
+
   auto key = bs.get_key();
   {
     std::shared_lock rl{modified_lock}; // read lock to check for existence
@@ -1015,3 +1019,20 @@ int RGWDataChangesLog::change_format(const DoutPrefixProvider *dpp, log_type typ
 int RGWDataChangesLog::trim_generations(const DoutPrefixProvider *dpp, std::optional<uint64_t>& through) {
   return bes->trim_generations(dpp, through);
 }
+
+void RGWDataChangesLogInfo::dump(Formatter *f) const
+{
+  encode_json("marker", marker, f);
+  utime_t ut(last_update);
+  encode_json("last_update", ut, f);
+}
+
+void RGWDataChangesLogInfo::decode_json(JSONObj *obj)
+{
+  JSONDecoder::decode_json("marker", marker, obj);
+  utime_t ut;
+  JSONDecoder::decode_json("last_update", ut, obj);
+  last_update = ut.to_real_time();
+}
+
+

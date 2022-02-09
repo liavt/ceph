@@ -24,12 +24,24 @@ namespace rgw::notify {
       return "s3:ObjectRemoved:Delete";
     case ObjectRemovedDeleteMarkerCreated:
       return "s3:ObjectRemoved:DeleteMarkerCreated";
+    case ObjectLifecycle:
+      return "s3:ObjectLifecycle:*";
     case ObjectExpiration:
-      return "s3:ObjectLifecycle:Expiration";
-    case ObjectNoncurrentExpiration:
-      return "s3:ObjectLifecycle:NoncurrentExpiration";
-    case ObjectDeleteMarkerExpiration:
-      return "s3:ObjectLifecycle:DeleteMarkerExpiration";
+      return "s3:ObjectLifecycle:Expiration:*";
+    case ObjectExpirationCurrent:
+      return "s3:ObjectLifecycle:Expiration:Current";
+    case ObjectExpirationNoncurrent:
+      return "s3:ObjectLifecycle:Expiration:Noncurrent";
+    case ObjectExpirationDeleteMarker:
+      return "s3:ObjectLifecycle:Expiration:DeleteMarker";
+    case ObjectExpirationAbortMPU:
+      return "s3:ObjectLifecycle:Expiration:AbortMPU";
+    case ObjectTransition:
+      return "s3:ObjectLifecycle:Transition:*";
+    case ObjectTransitionCurrent:
+      return "s3:ObjectLifecycle:Transition:Current";
+    case ObjectTransitionNoncurrent:
+      return "s3:ObjectLifecycle:Transition:Noncurrent";
 	case ObjectSynced:
 	  return "s3:ObjectSynced:*";
 	case ObjectSyncedCreate:
@@ -56,10 +68,18 @@ namespace rgw::notify {
       return "OBJECT_DELETE";
     case ObjectRemovedDeleteMarkerCreated:
       return "DELETE_MARKER_CREATE";
+    case ObjectLifecycle:
+      return "OBJECT_LIFECYCLE";
     case ObjectExpiration:
-    case ObjectNoncurrentExpiration:
-    case ObjectDeleteMarkerExpiration:
+    case ObjectExpirationCurrent:
+    case ObjectExpirationNoncurrent:
+    case ObjectExpirationDeleteMarker:
+    case ObjectExpirationAbortMPU:
       return "OBJECT_EXPIRATION";
+    case ObjectTransition:
+    case ObjectTransitionCurrent:
+    case ObjectTransitionNoncurrent:
+      return "OBJECT_TRANSITION";
 	case ObjectSynced:
 	case ObjectSyncedCreate:
 	case ObjectSyncedDelete:
@@ -93,6 +113,24 @@ namespace rgw::notify {
         return ObjectRemovedDelete;
     if (s == "s3:ObjectRemoved:DeleteMarkerCreated" || s == "DELETE_MARKER_CREATE")
         return ObjectRemovedDeleteMarkerCreated;
+    if (s == "s3:ObjectLifecycle:*")
+        return ObjectLifecycle;
+    if (s == "s3:ObjectLifecycle:Expiration:*" || s == "OBJECT_EXPIRATION")
+        return ObjectExpiration;
+    if (s == "s3:ObjectLifecycle:Expiration:Current")
+        return ObjectExpirationCurrent;
+    if (s == "s3:ObjectLifecycle:Expiration:Noncurrent")
+        return ObjectExpirationNoncurrent;
+    if (s == "s3:ObjectLifecycle:Expiration:DeleteMarker")
+        return ObjectExpirationDeleteMarker;
+    if (s == "s3:ObjectLifecycle:Expiration:AbortMultipartUpload")
+        return ObjectExpirationAbortMPU;
+    if (s == "s3:ObjectLifecycle:Transition:*" || s == "OBJECT_TRANSITION")
+        return ObjectTransition;
+    if (s == "s3:ObjectLifecycle:Transition:Current")
+        return ObjectTransitionCurrent;
+    if (s == "s3:ObjectLifecycle:Transition:Noncurrent")
+        return ObjectTransitionNoncurrent;
     if (s == "s3:ObjectSynced:*" || s == "OBJECT_SYNCED")
         return ObjectSynced;
     if (s == "s3:ObjectSynced:Create")
@@ -101,7 +139,6 @@ namespace rgw::notify {
         return ObjectSyncedDelete;
     if (s == "s3:ObjectSynced:DeletionMarkerCreated")
         return ObjectSyncedDeletionMarkerCreated;
-	
     return UnknownEvent;
   }
 

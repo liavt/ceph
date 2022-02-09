@@ -76,6 +76,18 @@ static int process_completed(const AioResultList& completed, RawObjSet *written)
   return error.value_or(0);
 }
 
+void RadosWriter::add_write_hint(librados::ObjectWriteOperation& op) {
+  const rgw_obj obj = head_obj->get_obj();
+  const RGWObjState *obj_state = obj_ctx.get_state(obj);
+  const bool compressed = obj_state->compressed;
+  uint32_t alloc_hint_flags = 0;
+  if (compressed) {
+    alloc_hint_flags |= librados::ALLOC_HINT_FLAG_INCOMPRESSIBLE;
+  }
+
+  op.set_alloc_hint2(0, 0, alloc_hint_flags);
+}
+
 int RadosWriter::set_stripe_obj(const rgw_raw_obj& raw_obj)
 {
   stripe_obj = store->svc()->rados->obj(raw_obj);
@@ -90,6 +102,7 @@ int RadosWriter::process(bufferlist&& bl, uint64_t offset)
     return 0;
   }
   librados::ObjectWriteOperation op;
+  add_write_hint(op);
   if (offset == 0) {
     op.write_full(data);
   } else {
@@ -106,6 +119,7 @@ int RadosWriter::write_exclusive(const bufferlist& data)
 
   librados::ObjectWriteOperation op;
   op.create(true); // exclusive create
+  add_write_hint(op);
   op.write_full(data);
 
   constexpr uint64_t id = 0; // unused
@@ -212,7 +226,8 @@ int AtomicObjectProcessor::prepare(optional_yield y)
   uint64_t chunk_size = 0;
   uint64_t alignment;
 
-  int r = head_obj->get_max_chunk_size(dpp, head_obj->get_bucket()->get_placement_rule(),
+  int r = dynamic_cast<rgw::sal::RadosObject*>(head_obj.get())->get_max_chunk_size(
+				       dpp, head_obj->get_bucket()->get_placement_rule(),
 				       &max_head_chunk_size, &alignment);
   if (r < 0) {
     return r;
@@ -222,7 +237,7 @@ int AtomicObjectProcessor::prepare(optional_yield y)
   if (head_obj->get_bucket()->get_placement_rule() != tail_placement_rule) {
     if (!head_obj->placement_rules_match(head_obj->get_bucket()->get_placement_rule(), tail_placement_rule)) {
       same_pool = false;
-      r = head_obj->get_max_chunk_size(dpp, tail_placement_rule, &chunk_size);
+      r = dynamic_cast<rgw::sal::RadosObject*>(head_obj.get())->get_max_chunk_size(dpp, tail_placement_rule, &chunk_size);
       if (r < 0) {
         return r;
       }
@@ -238,7 +253,8 @@ int AtomicObjectProcessor::prepare(optional_yield y)
   uint64_t stripe_size;
   const uint64_t default_stripe_size = store->ctx()->_conf->rgw_obj_stripe_size;
 
-  head_obj->get_max_aligned_size(default_stripe_size, alignment, &stripe_size);
+  dynamic_cast<rgw::sal::RadosObject*>(head_obj.get())->get_max_aligned_size(
+					default_stripe_size, alignment, &stripe_size);
 
   manifest.set_trivial_rule(head_max_size, stripe_size);
 
@@ -361,12 +377,14 @@ int MultipartObjectProcessor::prepare_head()
   uint64_t stripe_size;
   uint64_t alignment;
 
-  int r = target_obj->get_max_chunk_size(dpp, tail_placement_rule, &chunk_size, &alignment);
+  int r = dynamic_cast<rgw::sal::RadosObject*>(target_obj.get())->get_max_chunk_size(dpp,
+					  tail_placement_rule, &chunk_size, &alignment);
   if (r < 0) {
     ldpp_dout(dpp, 0) << "ERROR: unexpected: get_max_chunk_size(): placement_rule=" << tail_placement_rule.to_str() << " obj=" << target_obj << " returned r=" << r << dendl;
     return r;
   }
-  target_obj->get_max_aligned_size(default_stripe_size, alignment, &stripe_size);
+  dynamic_cast<rgw::sal::RadosObject*>(target_obj.get())->get_max_aligned_size(
+					default_stripe_size, alignment, &stripe_size);
 
   manifest.set_multipart_part_rule(stripe_size, part_num);
 
@@ -635,6 +653,8 @@ int AppendObjectProcessor::complete(size_t accounted_size, const string &etag, c
   //calculate the etag
   if (!cur_etag.empty()) {
     MD5 hash;
+    // Allow use of MD5 digest in FIPS mode for non-cryptographic purposes
+    hash.SetFlags(EVP_MD_CTX_FLAG_NON_FIPS_ALLOW);
     char petag[CEPH_CRYPTO_MD5_DIGESTSIZE];
     char final_etag[CEPH_CRYPTO_MD5_DIGESTSIZE];
     char final_etag_str[CEPH_CRYPTO_MD5_DIGESTSIZE * 2 + 16];
