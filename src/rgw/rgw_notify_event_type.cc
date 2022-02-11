@@ -24,7 +24,7 @@ namespace rgw::notify {
       return "s3:ObjectRemoved:Delete";
     case ObjectRemovedDeleteMarkerCreated:
       return "s3:ObjectRemoved:DeleteMarkerCreated";
--    case ObjectLifecycle:
+    case ObjectLifecycle:
       return "s3:ObjectLifecycle:*";
     case ObjectExpiration:
       return "s3:ObjectLifecycle:Expiration:*";
@@ -41,7 +41,7 @@ namespace rgw::notify {
     case ObjectTransitionCurrent:
       return "s3:ObjectLifecycle:Transition:Current";
     case ObjectTransitionNoncurrent:
-      return "s3:ObjectLifecycle:Transition:Noncurrent";-
+      return "s3:ObjectLifecycle:Transition:Noncurrent";
 	case ObjectSynced:
 	  return "s3:ObjectSynced:*";
 	case ObjectSyncedCreate:
