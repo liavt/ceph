@@ -695,13 +695,12 @@ int RGWAsyncFetchRemoteObj::_send_request(const DoutPrefixProvider *dpp)
   } else {
       // r >= 0
       if (bytes_transferred) {
+		ldpp_dout(dpp, 0) << "sending sync notification" << dendl;
+		  
         // send notification that object was succesfully synced
         std::string user_id = "0";
         std::string req_id = "rgw sync";
-        
-        // NOTE: we create a mutable copy of bucket.get_tenant as the get_notification function expects a std::string&, not const
-        std::string tenant(bucket.get_tenant());
-        
+        		
         RGWObjTags obj_tags;
         auto iter = attrs.find(RGW_ATTR_TAGS);
         if (iter != attrs.end()) {
@@ -713,20 +712,22 @@ int RGWAsyncFetchRemoteObj::_send_request(const DoutPrefixProvider *dpp)
           }
         }
         
+        // NOTE: we create a mutable copy of bucket.get_tenant as the get_notification function expects a std::string&, not const
+        std::string tenant(bucket.get_tenant());
+
         std::unique_ptr<rgw::sal::Notification> notify 
                  = store->get_notification(dpp, &dest_obj, &src_obj, &obj_ctx, rgw::notify::ObjectSyncedCreate,
                   &bucket, user_id,
                   tenant,
                   user_id, null_yield);
-                  
-        
+
         auto notify_res = static_cast<rgw::sal::RadosNotification*>(notify.get())->get_reservation();
         int ret = rgw::notify::publish_reserve(dpp, rgw::notify::ObjectSyncedCreate, notify_res, &obj_tags);
         if (ret < 0) {
           ldpp_dout(dpp, 1) << "ERROR: reserving notification failed, with error: " << ret << dendl;
           // no need to return, the sync already happened
         } else {
-          ret = rgw::notify::publish_commit(&src_obj, src_obj.get_obj_size(), src_mtime, nullptr /* etag */, 0/* version id */, rgw::notify::ObjectSyncedCreate, notify_res, dpp);
+          ret = rgw::notify::publish_commit(&src_obj, src_obj.get_obj_size(), src_mtime, "" /* etag */, "0"/* version id */, rgw::notify::ObjectSyncedCreate, notify_res, dpp);
           if (ret < 0) {
             ldpp_dout(dpp, 1) << "ERROR: publishing notification failed, with error: " << ret << dendl;
           }
