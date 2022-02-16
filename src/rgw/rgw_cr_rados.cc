@@ -73,9 +73,9 @@ RGWAsyncRadosProcessor::RGWAsyncRadosProcessor(CephContext *_cct, int num_thread
   : cct(_cct), m_tp(cct, "RGWAsyncRadosProcessor::m_tp", "rados_async", num_threads),
     req_throttle(_cct, "rgw_async_rados_ops", num_threads * 2),
     req_wq(this,
-	ceph::make_timespan(g_conf()->rgw_op_thread_timeout),
-	ceph::make_timespan(g_conf()->rgw_op_thread_suicide_timeout),
-	&m_tp) {
+	   ceph::make_timespan(g_conf()->rgw_op_thread_timeout),
+	   ceph::make_timespan(g_conf()->rgw_op_thread_suicide_timeout),
+	  &m_tp) {
 }
 
 void RGWAsyncRadosProcessor::start() {
@@ -664,7 +664,7 @@ int RGWAsyncFetchRemoteObj::_send_request(const DoutPrefixProvider *dpp)
                        &src_obj,
                        &dest_bucket, /* dest */
                        nullptr, /* source */
-               dest_placement_rule,
+                       dest_placement_rule,
                        &src_mtime, /* real_time* src_mtime, */
                        NULL, /* real_time* mtime, */
                        NULL, /* const real_time* mod_ptr, */

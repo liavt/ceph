@@ -5157,3 +5157,4 @@ void rgw_bucket_shard_sync_info::dump(Formatter *f) const
   encode_json("full_marker", full_marker, f);
   encode_json("inc_marker", inc_marker, f);
 }
+

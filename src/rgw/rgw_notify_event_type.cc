@@ -42,14 +42,14 @@ namespace rgw::notify {
       return "s3:ObjectLifecycle:Transition:Current";
     case ObjectTransitionNoncurrent:
       return "s3:ObjectLifecycle:Transition:Noncurrent";
-	case ObjectSynced:
-	  return "s3:ObjectSynced:*";
-	case ObjectSyncedCreate:
-	  return "s3:ObjectSynced:Create";
-	case ObjectSyncedDelete:
-	  return "s3:ObjectSynced:Delete";
-	case ObjectSyncedDeletionMarkerCreated:
-	  return "s3:ObjectSynced:DeletionMarkerCreated";
+    case ObjectSynced:
+      return "s3:ObjectSynced:*";
+    case ObjectSyncedCreate:
+      return "s3:ObjectSynced:Create";
+    case ObjectSyncedDelete:
+      return "s3:ObjectSynced:Delete";
+    case ObjectSyncedDeletionMarkerCreated:
+      return "s3:ObjectSynced:DeletionMarkerCreated";
     case UnknownEvent:
         return "s3:UnknownEvent";
     }
