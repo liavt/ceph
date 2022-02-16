@@ -80,11 +80,11 @@ namespace rgw::notify {
     case ObjectTransitionCurrent:
     case ObjectTransitionNoncurrent:
       return "OBJECT_TRANSITION";
-	case ObjectSynced:
-	case ObjectSyncedCreate:
-	case ObjectSyncedDelete:
-	case ObjectSyncedDeletionMarkerCreated:
-	  return "OBJECT_SYNCED";
+    case ObjectSynced:
+    case ObjectSyncedCreate:
+    case ObjectSyncedDelete:
+    case ObjectSyncedDeletionMarkerCreated:
+      return "OBJECT_SYNCED";
     case ObjectRemoved:
     case UnknownEvent:
       return "UNKNOWN_EVENT";

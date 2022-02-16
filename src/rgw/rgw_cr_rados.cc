@@ -73,9 +73,9 @@ RGWAsyncRadosProcessor::RGWAsyncRadosProcessor(CephContext *_cct, int num_thread
   : cct(_cct), m_tp(cct, "RGWAsyncRadosProcessor::m_tp", "rados_async", num_threads),
     req_throttle(_cct, "rgw_async_rados_ops", num_threads * 2),
     req_wq(this,
-       ceph::make_timespan(g_conf()->rgw_op_thread_timeout),
-       ceph::make_timespan(g_conf()->rgw_op_thread_suicide_timeout),
-       &m_tp) {
+	ceph::make_timespan(g_conf()->rgw_op_thread_timeout),
+	ceph::make_timespan(g_conf()->rgw_op_thread_suicide_timeout),
+	&m_tp) {
 }
 
 void RGWAsyncRadosProcessor::start() {
@@ -109,7 +109,7 @@ int RGWAsyncGetSystemObj::_send_request(const DoutPrefixProvider *dpp)
   return sysobj.rop()
                .set_objv_tracker(&objv_tracker)
                .set_attrs(pattrs)
-           .set_raw_attrs(raw_attrs)
+	       .set_raw_attrs(raw_attrs)
                .read(dpp, &bl, null_yield);
 }
 
@@ -127,7 +127,7 @@ RGWAsyncGetSystemObj::RGWAsyncGetSystemObj(const DoutPrefixProvider *_dpp, RGWCo
 int RGWSimpleRadosReadAttrsCR::send_request(const DoutPrefixProvider *dpp)
 {
   req = new RGWAsyncGetSystemObj(dpp, this, stack->create_completion_notifier(),
-                     svc, objv_tracker, obj, true, raw_attrs);
+			         svc, objv_tracker, obj, true, raw_attrs);
   async_rados->queue(req);
   return 0;
 }
@@ -698,8 +698,8 @@ int RGWAsyncFetchRemoteObj::_send_request(const DoutPrefixProvider *dpp)
 		ldpp_dout(dpp, 0) << "sending sync notification" << dendl;
 		  
         // send notification that object was succesfully synced
-        std::string user_id = "0";
-        std::string req_id = "rgw sync";
+        std::string user_id = "rgw sync";
+        std::string req_id = "0";
         		
         RGWObjTags obj_tags;
         auto iter = attrs.find(RGW_ATTR_TAGS);
@@ -711,15 +711,15 @@ int RGWAsyncFetchRemoteObj::_send_request(const DoutPrefixProvider *dpp)
             ldpp_dout(dpp, 1) << "ERROR: " << __func__ << ": caught buffer::error couldn't decode TagSet " << dendl;
           }
         }
-        
+
         // NOTE: we create a mutable copy of bucket.get_tenant as the get_notification function expects a std::string&, not const
-        std::string tenant(bucket.get_tenant());
+        std::string tenant(dest_bucket.get_tenant());
 
         std::unique_ptr<rgw::sal::Notification> notify 
-                 = store->get_notification(dpp, &dest_obj, &src_obj, &obj_ctx, rgw::notify::ObjectSyncedCreate,
-                  &bucket, user_id,
+                 = store->get_notification(dpp, &dest_obj, nullptr, &obj_ctx, rgw::notify::ObjectSyncedCreate,
+                  &dest_bucket, user_id,
                   tenant,
-                  user_id, null_yield);
+                  req_id, null_yield);
 
         auto notify_res = static_cast<rgw::sal::RadosNotification*>(notify.get())->get_reservation();
         int ret = rgw::notify::publish_reserve(dpp, rgw::notify::ObjectSyncedCreate, notify_res, &obj_tags);
