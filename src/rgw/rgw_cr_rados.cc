@@ -695,9 +695,6 @@ int RGWAsyncFetchRemoteObj::_send_request(const DoutPrefixProvider *dpp)
   } else {
       // r >= 0
       if (bytes_transferred) {
-		ldpp_dout(dpp, 0) << "sending sync notification" << dendl;
-		ldpp_dout(dpp, 0) << dest_bucket.get_key() << dendl;
-		  
         // send notification that object was succesfully synced
         std::string user_id = "rgw sync";
         std::string req_id = "0";
